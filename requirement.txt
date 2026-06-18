@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+pandas
+openpyxl
+pydantic
+fuzzywuzzy
+python-Levenshtein
+
+

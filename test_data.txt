@@ -1,0 +1,35 @@
+Wrong Aadhar
+{
+  "aadhaar_number": "gydu22348765",
+  "full_name": "Anny",
+  "phone_number": "7487426948",
+  "pan_card_number": "24737984",
+  "date_of_birth": "9-08-1998"
+}
+
+Wrong PAN
+{
+  "aadhaar_number": "472980699016",
+  "full_name": "Anny",
+  "phone_number": "7487426948",
+  "pan_card_number": "24737984",
+  "date_of_birth": "9-08-1998"
+}
+
+INVALID USER
+{
+  "aadhaar_number": "472980699016",
+  "full_name": "Anny",
+  "phone_number": "7487426948",
+  "pan_card_number": "ABCDE1234F",
+  "date_of_birth": "1998-08-09"
+}
+
+VALID USER
+{
+    "aadhaar_number": "472980699016",
+    "full_name": "Elina Dalal",
+    "phone_number": "7734670656",
+    "pan_card_number": "DMBJF3737N",
+    "date_of_birth": "1982-08-19"
+}
