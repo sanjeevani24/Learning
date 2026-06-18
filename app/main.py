@@ -1,5 +1,6 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from app.data_loader import load_data
+from app.ocr import extract_text
 from app.verifier import verify_user
 from app.models import UserInput
 from app.validators import validate_pan, validate_aadhaar
@@ -32,3 +33,19 @@ def verify(user: UserInput):
 
     # Only if formats are valid
     return verify_user(df, user.model_dump())
+
+from fastapi import UploadFile, File
+
+@app.post("/extract")
+async def extract_document(file: UploadFile = File(...)):
+
+    path = f"temp_{file.filename}"
+
+    with open(path, "wb") as f:
+        f.write(await file.read())
+
+    text = extract_text(path)
+
+    return {
+        "extracted_text": text
+    }
