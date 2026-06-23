@@ -1,5 +1,5 @@
 def verify_user(df, user):
-    record = df[df["aadhaar_number"] == str(user["aadhaar_number"])]
+    record = df[df["aadhaar_number"] == str(user.get("aadhaar_number", ""))]
 
     if record.empty:
         return {
@@ -12,43 +12,44 @@ def verify_user(df, user):
     score = 0
     matched = []
     mismatched = []
+    missing_fields = []
+    compared_fields = 0
 
-    if record["full_name"] == user["full_name"]:
-        score += 1
-        matched.append("full_name")
-    else:
-        mismatched.append("full_name")
+    for field in ["full_name", "phone_number", "pan_card_number", "date_of_birth"]:
+        user_value = user.get(field)
 
-    if record["phone_number"] == user["phone_number"]:
-        score += 1
-        matched.append("phone_number")
-    else:
-        mismatched.append("phone_number")
+        if user_value is None:
+            missing_fields.append(field)
+            continue
 
-    if record["pan_card_number"] == user["pan_card_number"]:
-        score += 1
-        matched.append("pan_card_number")
-    else:
-        mismatched.append("pan_card_number")
+        compared_fields += 1
+        record_value = record.get(field)
 
-    if record["date_of_birth"] == user["date_of_birth"]:
-        score += 1
-        matched.append("date_of_birth")
-    else:
-        mismatched.append("date_of_birth")
+        if str(record_value).strip() == str(user_value).strip():
+            score += 1
+            matched.append(field)
+        else:
+            mismatched.append(field)
 
-    trust = score / 4
+    trust = score / compared_fields if compared_fields else 0
 
-    if trust >= 0.75:
+    if compared_fields == 0:
+        status = "REVIEW"
+    elif trust >= 0.75:
         status = "VERIFIED"
     elif trust >= 0.5:
         status = "REVIEW"
     else:
         status = "REJECTED"
 
-    return {
+    result = {
         "status": status,
         "score": trust,
         "matched_fields": matched,
         "mismatched_fields": mismatched
     }
+
+    if missing_fields:
+        result["missing_fields"] = missing_fields
+
+    return result
