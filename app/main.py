@@ -1,13 +1,21 @@
+import logging
+import os
+
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from app.data_loader import load_data
 from app.ocr import extract_text
 from app.verifier import verify_user
 from app.models import UserInput
 from app.validators import validate_pan, validate_aadhaar
-from app.ocr import extract_text
 from app.document_parse import parse_document
+from app.qr_extractor import extract_qr_data
 
-app = FastAPI(title="KYC Verification Agent")
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+)
+logger = logging.getLogger(__name__)
+app = FastAPI(title="DOC Verification Agent")
 
 # Load dataset once
 df = load_data()
@@ -42,14 +50,27 @@ async def extract_document(
     file: UploadFile = File(...)
 ):
 
-    file_path = f"temp_{file.filename}"
+    
+
+    safe_filename = os.path.basename(file.filename)
+    file_path = f"temp_{safe_filename}"
+
+    logger.info("Received document upload: filename=%s file_path=%s", file.filename, file_path)
 
     with open(file_path, "wb") as f:
         f.write(await file.read())
 
     text = extract_text(file_path)
+    logger.info("Extracted OCR text length=%d", len(text) if text else 0)
 
     result = parse_document(text)
+    logger.info("Parsed document result: %s", result)
+
+    qr_result = extract_qr_data(file_path)
+    qr_data = qr_result.get("data") if isinstance(qr_result, dict) else qr_result
+    qr_debug = qr_result.get("debug") if isinstance(qr_result, dict) else None
+    logger.info("QR extraction returned: %s", qr_data)
+    logger.info("QR debug info: %s", qr_debug)
 
     # Validate extracted Aadhaar
     if (
@@ -80,5 +101,7 @@ async def extract_document(
     return {
         "raw_text": text,
         "parsed_data": result,
-        "verification_result": verification_result
+        "qr_data": qr_data,
+        "qr_debug": qr_debug,
+        "verification_result": verification_result,
     }

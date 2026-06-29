@@ -5,5 +5,12 @@ openpyxl
 pydantic
 fuzzywuzzy
 python-Levenshtein
+pytesseract
+pillow
+groq
+opencv-python
+python-multipart
+pyzbar
+dotenv
 
 
