@@ -5,5 +5,13 @@ openpyxl
 pydantic
 fuzzywuzzy
 python-Levenshtein
-
-
+groq
+opencv-python
+python-multipart
+pyzbar
+dotenv
+pytesseract
+psycopg2-binary
+sqlalchemy 
+psycopg2-binary
+rapidfuzz

@@ -19,6 +19,7 @@ Return ONLY valid JSON.
 
 {{
     "full_name": "",
+    "date_of_birth": "",
     "gender": "",
     "address": ""
 }}
