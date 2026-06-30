@@ -2,12 +2,14 @@ import logging
 import os
 
 from fastapi import FastAPI, HTTPException, UploadFile, File
-from app.data_loader import load_data
+from app.data_loader import get_user
 from app.ocr import extract_text
 from app.verifier import verify_user
 from app.models import UserInput
 from app.validators import validate_pan, validate_aadhaar
 from app.document_parse import parse_document
+from app.image_checks import analyze_image
+from app.trust_score import calculate_trust_score
 from app.qr_extractor import extract_qr_data
 
 logging.basicConfig(
@@ -17,12 +19,21 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 app = FastAPI(title="DOC Verification Agent")
 
-# Load dataset once
-df = load_data()
-
 @app.get("/")
 def home():
     return {"message": "KYC Agent Running"}
+
+@app.get("/user/{aadhaar}")
+def user_details(aadhaar: str):
+
+    user = get_user(aadhaar)
+
+    if user is None:
+        return {
+            "status": "User not found"
+        }
+
+    return user
 
 @app.post("/verify")
 def verify(user: UserInput):
@@ -42,8 +53,9 @@ def verify(user: UserInput):
         )
 
     # Only if formats are valid
-    return verify_user(df, user.model_dump())
-
+    return verify_user(
+    user.model_dump()
+    )
 
 @app.post("/extract-document")
 async def extract_document(
@@ -60,8 +72,16 @@ async def extract_document(
     with open(file_path, "wb") as f:
         f.write(await file.read())
 
-    text = extract_text(file_path)
-    logger.info("Extracted OCR text length=%d", len(text) if text else 0)
+    qr_data = extract_qr_data(file_path)
+
+    print(qr_data)
+
+    ocr_result = extract_text(file_path)
+
+    text = ocr_result["text"]
+    logger.info("Extracted OCR text length=%d", len(ocr_result) if text else 0)
+
+    ocr_confidence = ocr_result["ocr_confidence"]
 
     result = parse_document(text)
     logger.info("Parsed document result: %s", result)
@@ -71,6 +91,12 @@ async def extract_document(
     qr_debug = qr_result.get("debug") if isinstance(qr_result, dict) else None
     logger.info("QR extraction returned: %s", qr_data)
     logger.info("QR debug info: %s", qr_debug)
+
+    image_report = analyze_image(
+    file_path,
+    text,
+    result["document_type"]
+    )
 
     # Validate extracted Aadhaar
     if (
@@ -96,10 +122,31 @@ async def extract_document(
                 detail="Extracted PAN number has invalid format"
             )
 
-    verification_result = verify_user(df, result)
+    verification_result = verify_user(result)
+
+    trust_score = calculate_trust_score(
+    ocr_confidence,
+    image_report
+    )
+
+    risk_flags = []
+
+    if image_report["is_blurry"]:
+        risk_flags.append("Blurry document")
+
+    if ocr_confidence < 70:
+        risk_flags.append("Low OCR confidence")
+
+    if not image_report["good_resolution"]:
+        risk_flags.append("Low resolution image")
 
     return {
         "raw_text": text,
+        "ocr_confidence": ocr_confidence,
+        "image_quality": image_report,
+        "trust_score": trust_score,
+        "qr_data": qr_data,
+        "risk_flags": risk_flags,
         "parsed_data": result,
         "qr_data": qr_data,
         "qr_debug": qr_debug,

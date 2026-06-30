@@ -60,11 +60,17 @@ def parse_document(text):
 
         llm_data = extract_person_details(text)
 
+        # Use LLM DOB if OCR regex failed
+        if not regex_data.get("date_of_birth"):
+            regex_data["date_of_birth"] = llm_data.get(
+                "date_of_birth"
+            )
+
         return {
-            "document_type": "pan",
+            "document_type": "pan card",
             **regex_data,
             **llm_data
-        }
+}
 
     if re.search(r"\b\d{4}\s?\d{4}\s?\d{4}\b", text):
 
