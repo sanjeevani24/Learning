@@ -1,3 +1,6 @@
+import logging
+import os
+
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from app.data_loader import get_user
 from app.ocr import extract_text
@@ -9,7 +12,12 @@ from app.image_checks import analyze_image
 from app.trust_score import calculate_trust_score
 from app.qr_extractor import extract_qr_data
 
-app = FastAPI(title="KYC Verification Agent")
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+)
+logger = logging.getLogger(__name__)
+app = FastAPI(title="DOC Verification Agent")
 
 @app.get("/")
 def home():
@@ -54,7 +62,12 @@ async def extract_document(
     file: UploadFile = File(...)
 ):
 
-    file_path = f"temp_{file.filename}"
+    
+
+    safe_filename = os.path.basename(file.filename)
+    file_path = f"temp_{safe_filename}"
+
+    logger.info("Received document upload: filename=%s file_path=%s", file.filename, file_path)
 
     with open(file_path, "wb") as f:
         f.write(await file.read())
@@ -66,10 +79,18 @@ async def extract_document(
     ocr_result = extract_text(file_path)
 
     text = ocr_result["text"]
+    logger.info("Extracted OCR text length=%d", len(ocr_result) if text else 0)
 
     ocr_confidence = ocr_result["ocr_confidence"]
 
     result = parse_document(text)
+    logger.info("Parsed document result: %s", result)
+
+    qr_result = extract_qr_data(file_path)
+    qr_data = qr_result.get("data") if isinstance(qr_result, dict) else qr_result
+    qr_debug = qr_result.get("debug") if isinstance(qr_result, dict) else None
+    logger.info("QR extraction returned: %s", qr_data)
+    logger.info("QR debug info: %s", qr_debug)
 
     image_report = analyze_image(
     file_path,
@@ -127,5 +148,7 @@ async def extract_document(
         "qr_data": qr_data,
         "risk_flags": risk_flags,
         "parsed_data": result,
-        "verification_result": verification_result
+        "qr_data": qr_data,
+        "qr_debug": qr_debug,
+        "verification_result": verification_result,
     }
