@@ -1,16 +1,80 @@
-import pandas as pd
+from sqlalchemy import text
+from app.database import engine
 
-def load_data():
-    sheet_url = "https://docs.google.com/spreadsheets/d/1oXe4nlw-d2-74pUeM6Sz8kgcQaDHoQFHvbScA8mDzPw/export?format=xlsx"
+def get_user(aadhaar):
+
+    query = text("""
+        SELECT *
+        FROM users
+        WHERE aadhaar_number = :aadhaar
+    """)
+
+    with engine.connect() as conn:
+
+        result = conn.execute(
+            query,
+            {"aadhaar": aadhaar}
+        )
+
+        row = result.fetchone()
+
+        if row is None:
+            return None
+
+        return dict(row._mapping)
     
-    df = pd.read_excel(sheet_url)
+def find_user_by_fields(user):
 
-    # Clean column names
-    df.columns = df.columns.str.strip().str.lower()
+    if not user:
+        return None
 
-    # Fix datatypes
-    df["aadhaar_number"] = df["aadhaar_number"].astype(str)
-    df["phone_number"] = df["phone_number"].astype(str)
-    df["date_of_birth"] = pd.to_datetime(df["date_of_birth"]).dt.strftime('%Y-%m-%d')
+    def fetch_by_query(query_text, params):
+        with engine.connect() as conn:
+            result = conn.execute(text(query_text), params)
+            row = result.fetchone()
+            if row is None:
+                return None
+            return dict(row._mapping)
 
-    return df
+    pan_number = user.get("pan_card_number")
+    if pan_number:
+        record = fetch_by_query(
+            """
+            SELECT *
+            FROM users
+            WHERE lower(trim(pan_card_number)) = lower(trim(:pan))
+            """,
+            {"pan": pan_number}
+        )
+        if record is not None:
+            return record
+
+    full_name = user.get("full_name")
+    date_of_birth = user.get("date_of_birth")
+    if full_name and date_of_birth:
+        record = fetch_by_query(
+            """
+            SELECT *
+            FROM users
+            WHERE lower(trim(full_name)) = lower(trim(:name))
+            AND lower(trim(date_of_birth)) = lower(trim(:dob))
+            """,
+            {"name": full_name, "dob": date_of_birth}
+        )
+        if record is not None:
+            return record
+
+    date_of_birth = user.get("date_of_birth")
+    if date_of_birth:
+        record = fetch_by_query(
+            """
+            SELECT *
+            FROM users
+            WHERE lower(trim(date_of_birth)) = lower(trim(:dob))
+            """,
+            {"dob": date_of_birth}
+        )
+        if record is not None:
+            return record
+
+    return None
