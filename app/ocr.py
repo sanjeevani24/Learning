@@ -7,14 +7,14 @@ def extract_text(image_path):
 
     image = Image.open(image_path)
 
-    # Return full extracted text as a single string so downstream
-    # parsing functions receive a string (not a dict).
-    try:
-        text = pytesseract.image_to_string(image)
-    except Exception:
-        # Fallback: if image_to_string fails, try extracting data dict
-        data = pytesseract.image_to_data(image, output_type=pytesseract.Output.DICT)
-        text = " ".join([t for t in data.get("text", []) if t])
+    # Extract text
+    text = pytesseract.image_to_string(image)
+
+    # Extract OCR confidence
+    data = pytesseract.image_to_data(
+        image,
+        output_type=pytesseract.Output.DICT
+    )
 
     confidences = []
 
@@ -26,7 +26,7 @@ def extract_text(image_path):
             if conf >= 0:
                 confidences.append(conf)
 
-        except:
+        except ValueError:
             pass
 
     ocr_confidence = (
@@ -36,10 +36,6 @@ def extract_text(image_path):
     )
 
     return {
-    "text": text,
-    "ocr_confidence": round(
-        ocr_confidence,
-        2
-    )
+        "text": text,
+        "ocr_confidence": round(ocr_confidence, 2)
     }
-

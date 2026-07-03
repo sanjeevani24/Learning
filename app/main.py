@@ -12,6 +12,8 @@ from app.image_checks import analyze_image
 from app.trust_score import calculate_trust_score
 from app.qr_extractor import extract_qr_data
 
+
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s %(message)s",
@@ -87,9 +89,26 @@ async def extract_document(
     logger.info("Parsed document result: %s", result)
 
     qr_result = extract_qr_data(file_path)
-    qr_data = qr_result.get("data") if isinstance(qr_result, dict) else qr_result
-    qr_debug = qr_result.get("debug") if isinstance(qr_result, dict) else None
-    logger.info("QR extraction returned: %s", qr_data)
+    qr_payload = None
+    qr_payload_length = None
+    qr_payload_preview = None
+    qr_debug = None
+
+    if isinstance(qr_result, dict):
+        qr_payload = qr_result.get("payload")
+        qr_payload_length = qr_result.get("payload_length")
+        qr_debug = qr_result.get("debug")
+    else:
+        qr_payload = qr_result
+        if isinstance(qr_payload, str):
+            qr_payload_length = len(qr_payload)
+
+    if isinstance(qr_payload, (bytes, bytearray)):
+        qr_payload_preview = qr_payload[:40].hex()
+    elif isinstance(qr_payload, str):
+        qr_payload_preview = qr_payload[:40]
+
+    logger.info("QR extraction returned: %s", qr_payload)
     logger.info("QR debug info: %s", qr_debug)
 
     image_report = analyze_image(
@@ -121,6 +140,8 @@ async def extract_document(
                 status_code=400,
                 detail="Extracted PAN number has invalid format"
             )
+        
+        print(result)
 
     verification_result = verify_user(result)
 
@@ -148,7 +169,7 @@ async def extract_document(
         "qr_data": qr_data,
         "risk_flags": risk_flags,
         "parsed_data": result,
-        "qr_data": qr_data,
-        "qr_debug": qr_debug,
-        "verification_result": verification_result,
+        "payload_length": qr_payload_length,
+        "payload_preview": qr_payload_preview,
+        "verification_result": verification_result
     }

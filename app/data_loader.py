@@ -5,7 +5,7 @@ def get_user(aadhaar):
 
     query = text("""
         SELECT *
-        FROM users
+        FROM customers
         WHERE aadhaar_number = :aadhaar
     """)
 
@@ -41,7 +41,7 @@ def find_user_by_fields(user):
         record = fetch_by_query(
             """
             SELECT *
-            FROM users
+            FROM customers
             WHERE lower(trim(pan_card_number)) = lower(trim(:pan))
             """,
             {"pan": pan_number}
@@ -55,26 +55,31 @@ def find_user_by_fields(user):
         record = fetch_by_query(
             """
             SELECT *
-            FROM users
+            FROM customers
             WHERE lower(trim(full_name)) = lower(trim(:name))
-            AND lower(trim(date_of_birth)) = lower(trim(:dob))
+            AND date_of_birth = CAST(:dob AS DATE)
             """,
-            {"name": full_name, "dob": date_of_birth}
+            {
+                "name": full_name,
+                "dob": date_of_birth
+            }
         )
         if record is not None:
             return record
 
     date_of_birth = user.get("date_of_birth")
+
     if date_of_birth:
         record = fetch_by_query(
             """
             SELECT *
-            FROM users
-            WHERE lower(trim(date_of_birth)) = lower(trim(:dob))
+            FROM customers
+            WHERE date_of_birth = CAST(:dob AS DATE)
             """,
-            {"dob": date_of_birth}
+            {
+                "dob": date_of_birth
+            }
         )
+
         if record is not None:
             return record
-
-    return None
