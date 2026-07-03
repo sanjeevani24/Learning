@@ -26,11 +26,12 @@ def extract_qr_data(image_path):
             
             raw_bytes = qr_codes[0].data
             return {
-                "payload": raw_bytes,
+                "payload": raw_bytes.decode("ascii"),   # <-- Changed
                 "payload_length": len(raw_bytes),
                 "raw_bytes": raw_bytes.hex(),
                 "debug": "pyzbar"
             }
+                    
         
         logger.info("Pyzbar did not find a QR code, trying OpenCV fallback")
         image_cv = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
