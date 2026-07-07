@@ -11,7 +11,8 @@ from app.document_parse import parse_document
 from app.image_checks import analyze_image
 from app.trust_score import calculate_trust_score
 from app.qr_extractor import extract_qr_data
-
+from app.secure_qr_decoder import decode_secure_qr
+from app.comparator import compare_ocr_qr
 
 
 logging.basicConfig(
@@ -74,7 +75,20 @@ async def extract_document(
     with open(file_path, "wb") as f:
         f.write(await file.read())
 
-    qr_data = extract_qr_data(file_path)
+    qr_info = extract_qr_data(file_path)
+    qr_data = None
+
+    if qr_info["payload"]:
+        qr_data = decode_secure_qr(qr_info["payload"])
+
+        if qr_data is None:
+         raise HTTPException(
+            status_code=400,
+            detail={
+            "status": "QR_NOT_READABLE",
+            "message": "Unable to read the Aadhaar Secure QR Code. Please upload a clearer image with the QR code fully visible."
+        }
+    )
 
     print(qr_data)
 
@@ -110,6 +124,20 @@ async def extract_document(
 
     logger.info("QR extraction returned: %s", qr_payload)
     logger.info("QR debug info: %s", qr_debug)
+
+    image_report = analyze_image(
+    file_path,
+    text,
+    result["document_type"]
+    )
+    result = parse_document(text)
+    logger.info("Parsed document result: %s", result)
+
+        # Compare OCR data with Secure QR data
+    comparison_result = None
+
+    if qr_data:
+        comparison_result = compare_ocr_qr(result, qr_data)
 
     image_report = analyze_image(
     file_path,
@@ -167,6 +195,7 @@ async def extract_document(
         "image_quality": image_report,
         "trust_score": trust_score,
         "qr_data": qr_data,
+        "comparison": comparison_result,   # <-- Add this
         "risk_flags": risk_flags,
         "parsed_data": result,
         "payload_length": qr_payload_length,
