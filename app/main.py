@@ -2,6 +2,7 @@ import logging
 import os
 
 from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi.middleware.cors import CORSMiddleware
 from app.data_loader import get_user
 from app.ocr import extract_text
 from app.verifier import verify_user
@@ -21,6 +22,22 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 app = FastAPI(title="DOC Verification Agent")
+
+# ── CORS ──────────────────────────────────────────────────────────────────
+# Allow the Vite dev server and any localhost origin to call the API.
+# In production, replace "*" with your actual frontend domain.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",   # Vite dev server
+        "http://localhost:4173",   # Vite preview
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:4173",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.get("/")
 def home():
