@@ -32,15 +32,17 @@
  */
 
 import { useState, useCallback, useRef } from 'react'
-import { extractDocument } from '../services/kycService'
+import { extractDocument, submitElectricityBill } from '../services/kycService'
 
 /* ─── Phase constants ────────────────────────────────────────────────────── */
 export const PHASE = Object.freeze({
-  IDLE:       'idle',
-  UPLOADING:  'uploading',
-  PROCESSING: 'processing',
-  SUCCESS:    'success',
-  ERROR:      'error',
+  IDLE:               'idle',
+  UPLOADING:          'uploading',
+  PROCESSING:         'processing',
+  SUCCESS:            'success',
+  ERROR:              'error',
+  /** Backend decoded QR failed — caller must collect address proof */
+  NEED_ADDRESS_PROOF: 'need_address_proof',
 })
 
 export function useDocumentExtraction() {
@@ -110,29 +112,36 @@ export function useDocumentExtraction() {
       /* ── Actual API call ──────────────────────────────────────── */
       const data = await extractDocument(file, onUploadProgress)
 
-      /* ── Phase: success ───────────────────────────────────────── */
-      if (!controller.signal.aborted) {
-        setResult(data)
-        setPhase(PHASE.SUCCESS)
+      if (controller.signal.aborted) return
 
-        try {
-          const score = data?.trust_score ?? 0
-          const status = score >= 80 ? 'Verified' : score >= 55 ? 'Manual Review' : 'Rejected'
-          const historyItem = {
-            id: `ver_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
-            timestamp: new Date().toISOString(),
-            fileName: file.name,
-            fileSize: file.size,
-            result: data,
-            status: status
-          }
-          const rawHistory = window.localStorage.getItem('kyc_history')
-          const history = rawHistory ? JSON.parse(rawHistory) : []
-          history.unshift(historyItem)
-          window.localStorage.setItem('kyc_history', JSON.stringify(history))
-        } catch (e) {
-          console.error('[History] Failed to save verification to history:', e)
+      /* ── Fallback: QR could not be decoded ────────────────────── */
+      if (data?.status === 'NEED_ADDRESS_PROOF') {
+        setResult(data)
+        setPhase(PHASE.NEED_ADDRESS_PROOF)
+        return
+      }
+
+      /* ── Phase: success ───────────────────────────────────────── */
+      setResult(data)
+      setPhase(PHASE.SUCCESS)
+
+      try {
+        const score = data?.trust_score ?? 0
+        const status = score >= 80 ? 'Verified' : score >= 55 ? 'Manual Review' : 'Rejected'
+        const historyItem = {
+          id: `ver_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
+          timestamp: new Date().toISOString(),
+          fileName: file.name,
+          fileSize: file.size,
+          result: data,
+          status: status
         }
+        const rawHistory = window.localStorage.getItem('kyc_history')
+        const history = rawHistory ? JSON.parse(rawHistory) : []
+        history.unshift(historyItem)
+        window.localStorage.setItem('kyc_history', JSON.stringify(history))
+      } catch (e) {
+        console.error('[History] Failed to save verification to history:', e)
       }
     } catch (err) {
       if (controller.signal.aborted) return  // intentional cancel → ignore
@@ -141,6 +150,76 @@ export function useDocumentExtraction() {
       const message = extractErrorMessage(err)
       setError(message)
       setPhase(PHASE.ERROR)
+    }
+  }, [])
+
+  /* ── submitBill ───────────────────────────────────────────────────────
+   *
+   * Submits the Electricity Bill along with the extracted Aadhaar data.
+   * Uses the same uploading/processing flow and updates the hook's states.
+   * ─────────────────────────────────────────────────────────────────── */
+  const submitBill = useCallback(async (billFile, aadhaarData) => {
+    if (!billFile) return
+
+    abortRef.current?.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
+
+    setPhase(PHASE.UPLOADING)
+    setUploadProgress(0)
+    setError(null)
+
+    try {
+      const onUploadProgress = (progressEvent) => {
+        const pct = Math.round((progressEvent.progress ?? 0) * 100)
+        setUploadProgress(pct)
+        if (pct >= 100) {
+          setPhase(PHASE.PROCESSING)
+        }
+      }
+
+      const data = await submitElectricityBill(billFile, aadhaarData, onUploadProgress)
+
+      if (controller.signal.aborted) return
+
+      const mergedData = {
+        ...data,
+        parsed_data: {
+          ...aadhaarData,
+          document_type: 'aadhaar'
+        },
+        aadhaar_ocr_confidence: result?.ocr_confidence ?? 90
+      }
+
+      setResult(mergedData)
+      setPhase(PHASE.SUCCESS)
+
+      try {
+        const score = mergedData.trust_score ?? 0
+        const status = score >= 80 ? 'Verified' : score >= 55 ? 'Manual Review' : 'Rejected'
+        const historyItem = {
+          id: `ver_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
+          timestamp: new Date().toISOString(),
+          fileName: billFile.name,
+          fileSize: billFile.size,
+          result: mergedData,
+          status: status
+        }
+        const rawHistory = window.localStorage.getItem('kyc_history')
+        const history = rawHistory ? JSON.parse(rawHistory) : []
+        history.unshift(historyItem)
+        window.localStorage.setItem('kyc_history', JSON.stringify(history))
+      } catch (e) {
+        console.error('[History] Failed to save verification to history:', e)
+      }
+
+      return mergedData
+    } catch (err) {
+      if (controller.signal.aborted) return
+      const message = extractErrorMessage(err)
+      setError(message)
+      setPhase(PHASE.ERROR)
+      throw err
     }
   }, [])
 
@@ -154,16 +233,18 @@ export function useDocumentExtraction() {
   }, [])
 
   /* ── Derived booleans ───────────────────────────────────────────────── */
-  const isIdle       = phase === PHASE.IDLE
-  const isUploading  = phase === PHASE.UPLOADING
-  const isProcessing = phase === PHASE.PROCESSING
-  const isSuccess    = phase === PHASE.SUCCESS
-  const isError      = phase === PHASE.ERROR
-  const isBusy       = isUploading || isProcessing
+  const isIdle             = phase === PHASE.IDLE
+  const isUploading        = phase === PHASE.UPLOADING
+  const isProcessing       = phase === PHASE.PROCESSING
+  const isSuccess          = phase === PHASE.SUCCESS
+  const isError            = phase === PHASE.ERROR
+  const isNeedAddressProof = phase === PHASE.NEED_ADDRESS_PROOF
+  const isBusy             = isUploading || isProcessing
 
   return {
     /* Actions */
     submit,
+    submitBill,
     reset,
 
     /* State */
@@ -178,6 +259,7 @@ export function useDocumentExtraction() {
     isProcessing,
     isSuccess,
     isError,
+    isNeedAddressProof,
     isBusy,
   }
 }

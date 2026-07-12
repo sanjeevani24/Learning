@@ -86,3 +86,27 @@ export async function getVerificationResult(sessionId) {
   const { data } = await api.get(`/kyc/result/${sessionId}`)
   return data
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * submitElectricityBill
+ *
+ * Sends the Electricity Bill image file and the previously extracted
+ * Aadhaar data to the backend for verification.
+ *
+ * @param {File}   file        - The Electricity Bill image file
+ * @param {object} aadhaarData - The aadhaar_data returned with the fallback
+ * @param {Function} [onUploadProgress] - Axios progress callback (optional)
+ * @returns {Promise<object>}
+ * ─────────────────────────────────────────────────────────────────────── */
+export async function submitElectricityBill(file, aadhaarData, onUploadProgress) {
+  const formData = new FormData()
+  formData.append('file', file)
+  formData.append('aadhaar_data', JSON.stringify(aadhaarData))
+
+  const { data } = await api.post('/verify-address-proof', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    onUploadProgress,
+    timeout: 120_000,
+  })
+  return data
+}

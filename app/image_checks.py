@@ -155,5 +155,20 @@ def analyze_image(
         result["pan_header_present"] = (
             check_pan_header(text)
         )
+        
+    if document_type == "electricity_bill":
+
+        keywords = [
+            "consumer",
+            "bill",
+            "account",
+            "customer",
+            "electricity"
+        ]
+
+        result["bill_text_present"] = any(
+            k.lower() in text.lower()
+            for k in keywords
+    )
 
     return result

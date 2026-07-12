@@ -46,6 +46,8 @@ export function useFileUpload({
   maxSizeMB = 10,
   onFileSelect,
   onClear,
+  allowedTypes = null,      // Optional array of allowed mime types or extensions
+  customErrorMsg = null,    // Optional override for validation failure message
 } = {}) {
   const [uploadState, setUploadState] = useState(UPLOAD_STATE.IDLE)
   const [file,        setFile]        = useState(null)
@@ -74,8 +76,18 @@ export function useFileUpload({
     (f) => {
       if (!f) return 'No file received.'
 
-      /* Type check — must be an image */
-      if (!IMAGE_TYPES.has(f.type) && !f.type.startsWith('image/')) {
+      /* Type check — must match allowedTypes if specified */
+      if (allowedTypes) {
+        const fileExt = f.name.split('.').pop().toLowerCase()
+        const isMimeMatch = allowedTypes.includes(f.type)
+        const isExtMatch = allowedTypes.some(t => {
+          const cleanToken = t.toLowerCase().replace('.', '')
+          return cleanToken === fileExt || cleanToken.includes(fileExt)
+        })
+        if (!isMimeMatch && !isExtMatch) {
+          return customErrorMsg || `Unsupported file format.`
+        }
+      } else if (!IMAGE_TYPES.has(f.type) && !f.type.startsWith('image/')) {
         return `"${f.name}" is not an image. Accepted: JPG, PNG, WEBP, GIF.`
       }
 
@@ -87,7 +99,7 @@ export function useFileUpload({
 
       return null // ← null means valid
     },
-    [maxSizeMB],
+    [maxSizeMB, allowedTypes, customErrorMsg],
   )
 
   /* ── Process a File: validate → set state → create preview URL ───────── */

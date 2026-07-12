@@ -14,6 +14,11 @@ from app.trust_score import calculate_trust_score
 from app.qr_extractor import extract_qr_data
 from app.secure_qr_decoder import decode_secure_qr
 from app.comparator import compare_ocr_qr
+import json
+
+from app.address_proof_service import parse_address_proof
+from app.address_proof_comparator import compare_address_proof
+from fastapi import Form
 
 
 logging.basicConfig(
@@ -82,44 +87,47 @@ async def extract_document(
     file: UploadFile = File(...)
 ):
 
-    
-
     safe_filename = os.path.basename(file.filename)
     file_path = f"temp_{safe_filename}"
 
-    logger.info("Received document upload: filename=%s file_path=%s", file.filename, file_path)
+    logger.info(
+        "Received document upload: filename=%s file_path=%s",
+        file.filename,
+        file_path,
+    )
 
     with open(file_path, "wb") as f:
         f.write(await file.read())
 
-    qr_info = extract_qr_data(file_path)
-    qr_data = None
-
-    if qr_info["payload"]:
-        qr_data = decode_secure_qr(qr_info["payload"])
-
-        if qr_data is None:
-         raise HTTPException(
-            status_code=400,
-            detail={
-            "status": "QR_NOT_READABLE",
-            "message": "Unable to read the Aadhaar Secure QR Code. Please upload a clearer image with the QR code fully visible."
-        }
-    )
-
-    print(qr_data)
+    # ---------------- OCR ----------------
 
     ocr_result = extract_text(file_path)
 
     text = ocr_result["text"]
-    logger.info("Extracted OCR text length=%d", len(ocr_result) if text else 0)
-
     ocr_confidence = ocr_result["ocr_confidence"]
 
+    logger.info("Extracted OCR text length=%d", len(text) if text else 0)
+
+    # ---------------- Parse Document ----------------
+
     result = parse_document(text)
+
     logger.info("Parsed document result: %s", result)
 
+    # ---------------- Image Quality ----------------
+
+    image_report = analyze_image(
+        file_path,
+        text,
+        result["document_type"]
+    )
+
+   
+
+    # ---------------- QR Extraction ----------------
+
     qr_result = extract_qr_data(file_path)
+
     qr_payload = None
     qr_payload_length = None
     qr_payload_preview = None
@@ -131,69 +139,91 @@ async def extract_document(
         qr_debug = qr_result.get("debug")
     else:
         qr_payload = qr_result
+
         if isinstance(qr_payload, str):
             qr_payload_length = len(qr_payload)
 
     if isinstance(qr_payload, (bytes, bytearray)):
         qr_payload_preview = qr_payload[:40].hex()
+
     elif isinstance(qr_payload, str):
         qr_payload_preview = qr_payload[:40]
 
     logger.info("QR extraction returned: %s", qr_payload)
     logger.info("QR debug info: %s", qr_debug)
 
-    image_report = analyze_image(
-    file_path,
-    text,
-    result["document_type"]
+    # ---------------- Secure QR Decode ----------------
+
+    qr_data = None
+
+    if qr_payload:
+        qr_data = decode_secure_qr(qr_payload)
+
+    # QR couldn't be decoded
+    # Ask frontend for Electricity Bill
+
+    if qr_data is None:
+
+        return {
+
+            "status": "NEED_ADDRESS_PROOF",
+
+            "message": "Secure QR could not be decoded. Please upload an Electricity Bill.",
+
+            "aadhaar_data": result,
+
+            "ocr_confidence": ocr_confidence,
+
+            "image_quality": image_report
+        }
+
+    # ---------------- OCR vs QR ----------------
+
+    comparison_result = compare_ocr_qr(
+        result,
+        qr_data
     )
-    result = parse_document(text)
-    logger.info("Parsed document result: %s", result)
 
-        # Compare OCR data with Secure QR data
-    comparison_result = None
+    # ---------------- Validate Aadhaar ----------------
 
-    if qr_data:
-        comparison_result = compare_ocr_qr(result, qr_data)
-
-    image_report = analyze_image(
-    file_path,
-    text,
-    result["document_type"]
-    )
-
-    # Validate extracted Aadhaar
     if (
         result.get("document_type") == "aadhaar"
         and result.get("aadhaar_number")
     ):
 
         if not validate_aadhaar(result["aadhaar_number"]):
+
             raise HTTPException(
                 status_code=400,
                 detail="Extracted Aadhaar number has invalid format"
             )
 
-    # Validate extracted PAN
+    # ---------------- Validate PAN ----------------
+
     if (
         result.get("document_type") == "pan"
         and result.get("pan_card_number")
     ):
 
         if not validate_pan(result["pan_card_number"]):
+
             raise HTTPException(
                 status_code=400,
                 detail="Extracted PAN number has invalid format"
             )
-        
-        print(result)
+
+    # ---------------- Database Verification ----------------
 
     verification_result = verify_user(result)
 
+    # ---------------- Trust Score ----------------
+
     trust_score = calculate_trust_score(
-    ocr_confidence,
-    image_report
+        ocr_confidence,
+        image_report
     )
+
+    # ---------------- Risk Flags ----------------
 
     risk_flags = []
 
@@ -206,16 +236,113 @@ async def extract_document(
     if not image_report["good_resolution"]:
         risk_flags.append("Low resolution image")
 
+    # ---------------- Final Response ----------------
+
     return {
+
         "raw_text": text,
+
         "ocr_confidence": ocr_confidence,
+
         "image_quality": image_report,
+
         "trust_score": trust_score,
+
         "qr_data": qr_data,
-        "comparison": comparison_result,   # <-- Add this
+
+        "comparison": comparison_result,
+
         "risk_flags": risk_flags,
+
         "parsed_data": result,
+
         "payload_length": qr_payload_length,
+
         "payload_preview": qr_payload_preview,
+
         "verification_result": verification_result
+    }
+
+@app.post("/verify-address-proof")
+async def verify_address_proof(
+    file: UploadFile = File(...),
+    aadhaar_data: str = Form(...)
+):
+
+    # ---------------- Save Uploaded Bill ----------------
+
+    safe_filename = os.path.basename(file.filename)
+    file_path = f"temp_{safe_filename}"
+
+    with open(file_path, "wb") as f:
+        f.write(await file.read())
+
+    # ---------------- Convert Aadhaar JSON ----------------
+
+    aadhaar_data = json.loads(aadhaar_data)
+
+    # ---------------- OCR + Parse Electricity Bill ----------------
+
+    bill_result = parse_address_proof(file_path)
+
+    bill_data = bill_result["parsed_data"]
+
+    raw_text = bill_result["raw_text"]
+
+    ocr_confidence = bill_result["ocr_confidence"]
+
+    # ---------------- Compare Aadhaar vs Bill ----------------
+
+    comparison_result = compare_address_proof(
+        aadhaar_data,
+        bill_data
+    )
+
+    # ---------------- Analyze Bill Image ----------------
+
+    image_report = analyze_image(
+        file_path,
+        raw_text,
+        "electricity_bill"
+    )
+
+    # ---------------- Database Verification ----------------
+
+    verification_result = verify_user(aadhaar_data)
+
+    # ---------------- Trust Score ----------------
+
+    trust_score = calculate_trust_score(
+        ocr_confidence,
+        image_report
+    )
+
+    # ---------------- Risk Flags ----------------
+
+    risk_flags = []
+
+    if image_report["is_blurry"]:
+        risk_flags.append("Blurry Electricity Bill")
+
+    if ocr_confidence < 70:
+        risk_flags.append("Low OCR Confidence")
+
+    if not image_report["good_resolution"]:
+        risk_flags.append("Low Resolution")
+
+    # ---------------- Final Response ----------------
+
+    return {
+
+        "status": "VERIFIED_WITH_ADDRESS_PROOF",
+
+        "electricity_bill": bill_data,
+
+        "comparison": comparison_result,
+
+        "verification_result": verification_result,
+
+        "trust_score": trust_score,
+
+        "risk_flags": risk_flags
     }

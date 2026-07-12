@@ -274,27 +274,79 @@ const OCR_FIELDS = [
   { key: 'phone_number',    label: 'Phone Number',    icon: Phone    },
 ]
 
+const BILL_FIELDS = [
+  { key: 'consumer_name',   label: 'Consumer Name',   icon: User },
+  { key: 'consumer_number', label: 'Consumer Number', icon: Hash },
+  { key: 'provider',        label: 'Provider',        icon: FileText },
+  { key: 'bill_date',       label: 'Bill Date',       icon: Calendar },
+  { key: 'address',         label: 'Address',         icon: MapPin },
+  { key: 'city',            label: 'City',            icon: MapPin },
+  { key: 'state',           label: 'State',           icon: MapPin },
+  { key: 'pincode',         label: 'Pincode',         icon: Hash },
+]
+
 function OCRExtractedData({ result }) {
   const [search, setSearch] = useState('')
-  const data    = get(result, 'parsed_data') ?? {}
-  const ocrConf = get(result, 'ocr_confidence')
+  const [activeTab, setActiveTab] = useState('aadhaar')
 
-  const filteredFields = OCR_FIELDS.filter(({ key, label }) => {
+  const hasBill = result?.electricity_bill != null
+  const currentTab = hasBill ? activeTab : 'aadhaar'
+
+  const fields = currentTab === 'aadhaar' ? OCR_FIELDS : BILL_FIELDS
+  const data = currentTab === 'aadhaar'
+    ? (get(result, 'parsed_data') ?? {})
+    : (get(result, 'electricity_bill') ?? {})
+
+  const ocrConf = currentTab === 'aadhaar'
+    ? (get(result, 'aadhaar_ocr_confidence') ?? get(result, 'ocr_confidence'))
+    : null
+
+  const filteredFields = fields.filter(({ key, label }) => {
     if (!search) return true
     const val = String(data[key] ?? '').toLowerCase()
     return label.toLowerCase().includes(search.toLowerCase()) || val.includes(search.toLowerCase())
   })
 
+  const headerBadge = ocrConf != null
+    ? <ConfidenceBadge value={ocrConf} />
+    : hasBill && currentTab === 'electricity_bill'
+      ? <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold border bg-amber-50 border-amber-200 text-amber-700">⚡ Bill OCR</span>
+      : null
+
   return (
     <Section id="sec-ocr" title="OCR Extracted Information" icon={ScanLine}
              iconBg="bg-blue-50" iconColor="text-blue-600"
-             badge={ocrConf != null ? <ConfidenceBadge value={ocrConf} /> : null}>
+             badge={headerBadge}>
+      {hasBill && (
+        <div className="px-5 pt-4 pb-1.5 flex gap-2 border-b border-gray-100 bg-gray-50/20">
+          <button
+            onClick={() => { setActiveTab('aadhaar'); setSearch(''); }}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+              currentTab === 'aadhaar'
+                ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-150'
+                : 'bg-white text-gray-500 border border-gray-200 hover:bg-gray-50'
+            }`}
+          >
+            Aadhaar Card OCR
+          </button>
+          <button
+            onClick={() => { setActiveTab('electricity_bill'); setSearch(''); }}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+              currentTab === 'electricity_bill'
+                ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-150'
+                : 'bg-white text-gray-500 border border-gray-200 hover:bg-gray-50'
+            }`}
+          >
+            Electricity Bill OCR
+          </button>
+        </div>
+      )}
       {result != null && (
         <div className="px-5 py-3 border-b border-indigo-50/50 bg-indigo-50/5 flex items-center gap-3">
           <div className="relative flex-1">
             <input
               type="text"
-              placeholder="Search OCR fields..."
+              placeholder={`Search ${currentTab === 'aadhaar' ? 'Aadhaar' : 'Electricity Bill'} OCR fields...`}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="w-full text-xs pl-8 pr-3 py-1.5 rounded-lg border border-indigo-100 focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-white"
@@ -458,11 +510,13 @@ const CMP_FIELDS = [
 ]
 
 function OCRvsQR({ result }) {
+  const isAddressProof = result?.status === 'VERIFIED_WITH_ADDRESS_PROOF'
+
   // comparison.comparison holds the per-field detail dict
   const cmpRoot = get(result, 'comparison') ?? {}
   const fields  = cmpRoot.comparison ?? {}          // <-- actual nesting
   const matched = cmpRoot.matched_fields             // matched_fields key
-  const total   = cmpRoot.total_fields ?? CMP_FIELDS.length
+  const total   = cmpRoot.total_fields ?? (isAddressProof ? 2 : CMP_FIELDS.length)
   const matchPct = cmpRoot.match_score               // match_score key
 
   const getStatus = (key) => {
@@ -471,27 +525,47 @@ function OCRvsQR({ result }) {
     return f.match === true ? 'match' : f.match === false ? 'mismatch' : 'missing'
   }
 
+  const compareFields = isAddressProof
+    ? [
+        { key: 'full_name', label: 'Name' },
+        { key: 'address', label: 'Address' }
+      ]
+    : CMP_FIELDS;
+
   return (
-    <Section id="sec-compare" title="OCR vs QR Comparison" icon={ArrowLeftRight}
-             iconBg="bg-amber-50" iconColor="text-amber-600">
+    <Section
+      id="sec-compare"
+      title={isAddressProof ? "Aadhaar vs Electricity Bill Comparison" : "OCR vs QR Comparison"}
+      icon={ArrowLeftRight}
+      iconBg="bg-amber-50"
+      iconColor="text-amber-600"
+    >
       <div className="p-5 space-y-2">
         <div className="grid grid-cols-12 gap-3 px-3 mb-2">
-          {['Field', 'OCR Value', 'QR Value', 'Status'].map((h, i) => (
+          {[
+            'Field',
+            isAddressProof ? 'Aadhaar Value' : 'OCR Value',
+            isAddressProof ? 'Electricity Bill Value' : 'QR Value',
+            'Status'
+          ].map((h, i) => (
             <span key={h} className={`text-[10px] font-bold text-gray-400 uppercase tracking-wider ${i === 0 ? 'col-span-2' : i === 3 ? 'col-span-2 text-center' : 'col-span-4'}`}>{h}</span>
           ))}
         </div>
-        {CMP_FIELDS.map(({ key, label }) => {
+        {compareFields.map(({ key, label }) => {
           const f = fields[key] ?? {}
           const status = getStatus(key)
           const style  = MATCH_STYLE[status]
+          const val1 = isAddressProof ? f.aadhaar : f.ocr
+          const val2 = isAddressProof ? f.electricity_bill : f.qr
+
           return (
             <div key={key} className={`grid grid-cols-12 gap-3 items-start p-3 rounded-xl border ${style.border} ${style.bg}`}>
               <span className="col-span-2 text-xs font-semibold text-gray-700 pt-0.5">{label}</span>
               <div className="col-span-4">
-                {result == null ? <Bone w="w-24" h="h-3" /> : <ValueCell value={f.ocr} className="text-xs" />}
+                {result == null ? <Bone w="w-24" h="h-3" /> : <ValueCell value={val1} className="text-xs" />}
               </div>
               <div className="col-span-4">
-                {result == null ? <Bone w="w-24" h="h-3" /> : <ValueCell value={f.qr} className="text-xs" />}
+                {result == null ? <Bone w="w-24" h="h-3" /> : <ValueCell value={val2} className="text-xs" />}
               </div>
               <div className="col-span-2 flex justify-center pt-0.5">
                 {result == null
@@ -661,44 +735,57 @@ function DatabaseVerification({ result }) {
    Uses comparison.comparison for OCR/QR, verification_result for DB
    ═══════════════════════════════════════════════════════════════════ */
 function DatabaseComparison({ result }) {
+  const isAddressProof = result?.status === 'VERIFIED_WITH_ADDRESS_PROOF'
+
   const cmpFields = get(result, 'comparison.comparison') ?? {}
   const vr        = get(result, 'verification_result') ?? {}
   const allFields = [...(vr.matched_fields ?? []), ...(vr.mismatched_fields ?? [])]
   const dbMap = {}
   allFields.forEach(({ field, database_value }) => { dbMap[field] = database_value })
 
-  const TRIPLE = [
-    { key: 'full_name',     label: 'Name'    },
-    { key: 'date_of_birth', label: 'DOB'     },
-    { key: 'gender',        label: 'Gender'  },
-    { key: 'address',       label: 'Address' },
-  ]
+  const TRIPLE = isAddressProof
+    ? [
+        { key: 'full_name',     label: 'Name'    },
+        { key: 'address',       label: 'Address' },
+      ]
+    : [
+        { key: 'full_name',     label: 'Name'    },
+        { key: 'date_of_birth', label: 'DOB'     },
+        { key: 'gender',        label: 'Gender'  },
+        { key: 'address',       label: 'Address' },
+      ]
 
   const rowStatus = (key) => {
     const f   = cmpFields[key] ?? {}
-    const ocr = f.ocr ?? null
-    const qr  = f.qr  ?? null
+    const val1 = isAddressProof ? f.aadhaar : f.ocr
+    const val2 = isAddressProof ? f.electricity_bill : f.qr
     const db  = dbMap[key] ?? null
-    if (!ocr && !qr && !db) return 'missing'
-    const vals = [ocr, qr, db].filter(Boolean).map((v) => String(v).toLowerCase().trim())
+    if (!val1 && !val2 && !db) return 'missing'
+    const vals = [val1, val2, db].filter(Boolean).map((v) => String(v).toLowerCase().trim())
     if (new Set(vals).size === 1) return 'match'
-    if (qr && db && String(qr).toLowerCase().trim() === String(db).toLowerCase().trim()) return 'warning'
+    if (val2 && db && String(val2).toLowerCase().trim() === String(db).toLowerCase().trim()) return 'warning'
     return 'mismatch'
   }
 
   const rowStyle = {
     match:    { bg: 'bg-emerald-50/60 border-emerald-200', badge: 'bg-emerald-100 text-emerald-700', label: '✅ All Match'    },
-    warning:  { bg: 'bg-amber-50/60 border-amber-200',     badge: 'bg-amber-100 text-amber-700',     label: '⚠️ OCR Differs'  },
+    warning:  { bg: 'bg-amber-50/60 border-amber-200',     badge: 'bg-amber-100 text-amber-700',     label: isAddressProof ? '⚠️ Aadhaar Differs' : '⚠️ OCR Differs'  },
     mismatch: { bg: 'bg-red-50/60 border-red-200',         badge: 'bg-red-100 text-red-700',         label: '❌ Mismatch'     },
     missing:  { bg: 'bg-gray-50 border-gray-100',          badge: 'bg-gray-100 text-gray-400',        label: '— Missing'       },
   }
 
   return (
-    <Section id="sec-triple" title="Three-Way Comparison (OCR · QR · Database)" icon={BarChart2}
+    <Section id="sec-triple" title={isAddressProof ? "Three-Way Comparison (Aadhaar · Electricity Bill · Database)" : "Three-Way Comparison (OCR · QR · Database)"} icon={BarChart2}
              iconBg="bg-purple-50" iconColor="text-purple-600">
       <div className="p-5 space-y-1.5">
         <div className="grid grid-cols-12 gap-3 px-3 mb-2">
-          {['Field', 'OCR Value', 'QR Value', 'DB Value', 'Status'].map((h, i) => (
+          {[
+            'Field',
+            isAddressProof ? 'Aadhaar Value' : 'OCR Value',
+            isAddressProof ? 'Electricity Bill' : 'QR Value',
+            'DB Value',
+            'Status'
+          ].map((h, i) => (
             <span key={h} className={`text-[10px] font-bold text-gray-400 uppercase tracking-wider ${[2, 2, 2, 2, 4][i] === 4 ? 'col-span-4 text-center' : `col-span-${[2,2,2,2][i] ?? 2}`}`}>{h}</span>
           ))}
         </div>
@@ -706,11 +793,14 @@ function DatabaseComparison({ result }) {
           const f  = cmpFields[key] ?? {}
           const st = rowStatus(key)
           const rs = rowStyle[st]
+          const val1 = isAddressProof ? f.aadhaar : f.ocr
+          const val2 = isAddressProof ? f.electricity_bill : f.qr
+
           return (
             <div key={key} className={`grid grid-cols-12 gap-3 items-start p-3 rounded-xl border ${rs.bg}`}>
               <span className="col-span-2 text-xs font-semibold text-gray-700 pt-0.5">{label}</span>
-              <div className="col-span-2 text-xs text-gray-700">{result == null ? <Bone w="w-16" h="h-3" /> : fmt(f.ocr)}</div>
-              <div className="col-span-2 text-xs text-gray-700">{result == null ? <Bone w="w-16" h="h-3" /> : fmt(f.qr)}</div>
+              <div className="col-span-2 text-xs text-gray-700">{result == null ? <Bone w="w-16" h="h-3" /> : fmt(val1)}</div>
+              <div className="col-span-2 text-xs text-gray-700">{result == null ? <Bone w="w-16" h="h-3" /> : fmt(val2)}</div>
               <div className="col-span-2 text-xs text-gray-700">{result == null ? <Bone w="w-16" h="h-3" /> : fmt(dbMap[key])}</div>
               <div className="col-span-4 flex justify-center">
                 {result == null ? <Bone w="w-20" h="h-5" className="rounded-full" />
@@ -730,10 +820,12 @@ function DatabaseComparison({ result }) {
    (No separate validation_checks key in the API — we compute them)
    ═══════════════════════════════════════════════════════════════════ */
 function ValidationChecks({ result }) {
-  const img = get(result, 'image_quality') ?? {}
+  const isAddressProof = result?.status === 'VERIFIED_WITH_ADDRESS_PROOF'
+
+  const img = get(result, 'image_quality') ?? get(result, 'aadhaar_image_quality') ?? {}
   const vr  = get(result, 'verification_result') ?? {}
   const pd  = get(result, 'parsed_data') ?? {}
-  const ocr = get(result, 'ocr_confidence')
+  const ocr = get(result, 'ocr_confidence') ?? get(result, 'aadhaar_ocr_confidence')
   const qr  = get(result, 'qr_data')
   const cmp = get(result, 'comparison.comparison') ?? {}
 
@@ -755,6 +847,17 @@ function ValidationChecks({ result }) {
     { label: 'DOB Match (OCR = QR)'           },
     { label: 'Government Text Present'        },
     { label: 'Not Blacklisted'                },
+  ] : isAddressProof ? [
+    { label: 'Aadhaar Format Valid',           val: pd.aadhaar_number?.replace(/\s/g,'').length === 12 ?? false },
+    { label: 'Document Type Detected',         val: !!pd.document_type && pd.document_type !== 'unknown' },
+    { label: 'OCR Confidence Above Threshold', val: ocr != null ? ocr > 70 : null },
+    { label: 'Good Image Resolution',          val: tr(img.good_resolution) },
+    { label: 'Image Not Blurry',               val: img.is_blurry != null ? !img.is_blurry : null },
+    { label: 'Electricity Bill Extracted',     val: result?.electricity_bill != null },
+    { label: 'Database Record Found',          val: [...(vr.matched_fields ?? []), ...(vr.mismatched_fields ?? [])].length > 0 },
+    { label: 'Name Match (Aadhaar = Bill)',    val: cmp.full_name?.match != null ? cmp.full_name.match : null },
+    { label: 'Address Match (Aadhaar = Bill)', val: cmp.address?.match != null ? cmp.address.match : null },
+    { label: 'Not Blacklisted',                val: true },
   ] : [
     { label: 'Aadhaar Format Valid',           val: pd.aadhaar_number?.replace(/\s/g,'').length === 12 ?? false },
     { label: 'Document Type Detected',         val: !!pd.document_type && pd.document_type !== 'unknown' },
@@ -818,8 +921,8 @@ function ValidationChecks({ result }) {
    is_blurry, metadata_present, government_text_present, uidai_present}
    ═══════════════════════════════════════════════════════════════════ */
 function ImageQualityReport({ result }) {
-  const q   = get(result, 'image_quality') ?? {}
-  const ocr = get(result, 'ocr_confidence')
+  const q   = get(result, 'image_quality') ?? get(result, 'aadhaar_image_quality') ?? {}
+  const ocr = get(result, 'ocr_confidence') ?? get(result, 'aadhaar_ocr_confidence')
 
   const resScore  = q.good_resolution === true ? 100 : q.good_resolution === false ? 40 : null
   const blurScore = q.blur_score != null ? normPct(q.blur_score, true) : null  // Laplacian → 0-100

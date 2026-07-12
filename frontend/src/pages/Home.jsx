@@ -20,6 +20,7 @@ import {
   Upload, Cloud, FolderOpen, X, CheckCircle2,
   AlertCircle, ScanLine, ArrowRight, Lock,
   Cpu, Zap, FileImage, RotateCcw, User,
+  Zap as ZapIcon, Lightbulb, FileCheck2, AlertTriangle,
 } from 'lucide-react'
 
 import Navbar                 from '../components/Navbar/Navbar'
@@ -347,52 +348,91 @@ function SuccessSummary({ result, onReset, onDashboard }) {
   )
 }
 
-/* ── Upload card wrapper — holds all states ── */
-function UploadCard() {
-  const navigate = useNavigate()
+/* ══════════════════════════════════════════════════════════════════════════
+   ELECTRICITY BILL UPLOAD CARD (fallback flow)
+   ══════════════════════════════════════════════════════════════════════════ */
 
-  /* File-selection state from useFileUpload */
-  const {
-    file, previewUrl, error: fileError,
-    isDragging, hasPreview, hasError: hasFileError, isIdle: isFileIdle,
-    inputRef, accept, clear,
-    openPicker, handleInputChange,
-    dragHandlers, handleKeyDown,
-  } = useFileUpload({ maxSizeMB: 10 })
-
-  /* API call state */
-  const {
-    submit, reset: apiReset,
-    phase, uploadProgress,
-    result, error: apiError,
-    isBusy, isSuccess, isError: isApiError,
-  } = useDocumentExtraction()
-
-  const handleVerify = useCallback(async () => {
-    if (!file) return
-    await submit(file)
-  }, [file, submit])
-
-  const handleReset = useCallback(() => {
-    clear()
-    apiReset()
-  }, [clear, apiReset])
-
-  const handleDashboard = useCallback(() => {
-    navigate('/dashboard', { state: { result } })
-  }, [navigate, result])
-
-  const showDropZone  = !hasPreview && !isBusy && !isSuccess
-  const showPreview   = hasPreview  && !isBusy && !isSuccess
-
+/**
+ * ElectricityBillDropZone — reuses the same visual language as DropZone
+ * but with amber/orange accent colours to visually distinguish it.
+ */
+function ElectricityBillDropZone({ openPicker, dragHandlers, isDragging, handleKeyDown }) {
   return (
     <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.55, delay: 0.28 }}
-      className="card-white p-6 sm:p-8"
+      {...dragHandlers}
+      onKeyDown={handleKeyDown}
+      tabIndex={0}
+      role="button"
+      aria-label="Upload Electricity Bill — press Enter to open file picker"
+      animate={isDragging ? { scale: 1.015 } : { scale: 1 }}
+      transition={{ duration: 0.15 }}
+      className={`
+        w-full rounded-2xl border-2 border-dashed transition-all duration-200
+        flex flex-col items-center justify-center py-12 px-6 gap-4 cursor-pointer
+        focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500
+        ${isDragging
+          ? 'border-amber-400 bg-amber-50/60'
+          : 'border-amber-200 bg-amber-50/30 hover:border-amber-300 hover:bg-amber-50/50'}
+      `}
     >
-      {/* Hidden file input */}
+      {/* Icon */}
+      <div className={`
+        w-18 h-18 rounded-full flex items-center justify-center transition-colors duration-200
+        ${isDragging ? 'bg-amber-100' : 'bg-amber-50 border border-amber-100'}
+      `} style={{ width: 72, height: 72 }}>
+        <Lightbulb
+          className={`w-8 h-8 transition-colors ${isDragging ? 'text-amber-500' : 'text-amber-400'}`}
+          strokeWidth={1.5}
+        />
+      </div>
+
+      {/* Text */}
+      <div className="text-center space-y-1">
+        <p className="text-lg font-bold text-gray-800">Upload Electricity Bill</p>
+        <p className="text-sm text-gray-500">
+          {isDragging ? 'Drop it here!' : 'Drag & drop your file here or click to browse'}
+        </p>
+      </div>
+
+      {/* Browse File button */}
+      <motion.button
+        type="button"
+        id="bill-choose-file"
+        onClick={(e) => { e.stopPropagation(); openPicker() }}
+        className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold text-white
+                   bg-amber-500 hover:bg-amber-600 shadow-md shadow-amber-200
+                   transition-all duration-200 focus:outline-none"
+        whileTap={{ scale: 0.97 }}
+      >
+        <Upload className="w-4 h-4" />
+        Browse File
+      </motion.button>
+
+      <p className="text-xs text-gray-400">JPG, PNG, JPEG — Max 10 MB</p>
+    </motion.div>
+  )
+}
+
+/**
+ * ElectricityBillCard — the full card that appears beneath the Aadhaar card
+ * when the backend returns NEED_ADDRESS_PROOF.
+ */
+function ElectricityBillCard({
+  billFile, billPreview, billError, hasBillPreview,
+  isDragging, inputRef, accept,
+  openPicker, handleInputChange, dragHandlers, handleKeyDown,
+  onClear, onSubmit,
+  isBusy, submitError,
+}) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 24 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: 16 }}
+      transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+      className="card-white p-6 sm:p-8 border-l-4 border-amber-400"
+    >
+      {/* Hidden file input for bill */}
       <input
         ref={inputRef}
         type="file"
@@ -402,31 +442,98 @@ function UploadCard() {
         aria-hidden="true"
       />
 
-      {/* Content transitions */}
+      {/* Info banner */}
+      <div className="flex items-start gap-3 p-4 mb-5 rounded-xl bg-amber-50 border border-amber-200">
+        <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
+        <div>
+          <p className="text-sm font-bold text-amber-800">Additional Document Required</p>
+          <p className="text-xs text-amber-700 mt-0.5 leading-relaxed">
+            Secure QR could not be decoded from your Aadhaar.<br />
+            Please upload your <span className="font-semibold">Electricity Bill</span> to continue verification.
+          </p>
+        </div>
+      </div>
+
+      {/* Drop zone / preview area */}
       <AnimatePresence mode="wait">
-        {isSuccess ? (
-          <motion.div key="success"
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-            <SuccessSummary
-              result={result}
-              onReset={handleReset}
-              onDashboard={handleDashboard}
-            />
-          </motion.div>
-        ) : showPreview ? (
-          <motion.div key="preview"
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-            <FilePreview
-              file={file}
-              previewUrl={previewUrl}
-              onClear={handleReset}
-              onVerify={handleVerify}
-            />
+        {hasBillPreview ? (
+          <motion.div
+            key="bill-preview"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="space-y-4"
+          >
+            {/* Thumbnail */}
+            <div className="relative w-full rounded-2xl overflow-hidden bg-gray-50 border border-gray-200 aspect-[16/8]">
+              <img
+                src={billPreview}
+                alt="Electricity bill preview"
+                className="w-full h-full object-contain"
+              />
+              <button
+                type="button"
+                onClick={onClear}
+                aria-label="Remove bill"
+                className="absolute top-3 right-3 w-8 h-8 rounded-full bg-white border border-gray-200
+                           shadow-sm hover:bg-red-50 hover:border-red-200 flex items-center justify-center
+                           text-gray-500 hover:text-red-500 transition-all duration-200"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+              <div className="absolute bottom-3 left-3 flex items-center gap-1.5 px-2.5 py-1
+                              rounded-lg bg-white/90 border border-amber-200 text-xs font-semibold text-amber-700">
+                <CheckCircle2 className="w-3 h-3" />
+                Ready to submit
+              </div>
+            </div>
+
+            {/* File meta */}
+            <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-gray-50 border border-gray-200">
+              <div className="w-9 h-9 rounded-lg bg-amber-50 border border-amber-100
+                              flex items-center justify-center flex-shrink-0">
+                <FileImage className="w-4 h-4 text-amber-500" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-gray-800 truncate">{billFile?.name}</p>
+                <p className="text-xs text-gray-400">{billFile ? `${(billFile.size / 1024).toFixed(1)} KB` : ''}</p>
+              </div>
+              <button type="button" onClick={onClear}
+                      className="text-xs text-amber-500 hover:text-amber-700 font-medium transition-colors">
+                Change
+              </button>
+            </div>
+
+            {/* Submit button */}
+            <motion.button
+              type="button"
+              id="bill-submit-btn"
+              onClick={onSubmit}
+              disabled={isBusy}
+              className="w-full flex items-center justify-center gap-2.5 py-4 rounded-xl
+                         text-base font-bold text-white bg-amber-500 hover:bg-amber-600
+                         shadow-lg shadow-amber-200 transition-all duration-200
+                         disabled:opacity-60 disabled:cursor-not-allowed"
+              whileTap={{ scale: 0.98 }}
+            >
+              {isBusy ? (
+                <>
+                  <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                  Submitting…
+                </>
+              ) : (
+                <>
+                  <FileCheck2 className="w-5 h-5" />
+                  Submit Electricity Bill
+                  <ArrowRight className="w-4 h-4" />
+                </>
+              )}
+            </motion.button>
           </motion.div>
         ) : (
-          <motion.div key="dropzone"
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-            <DropZone
+          <motion.div
+            key="bill-dropzone"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+          >
+            <ElectricityBillDropZone
               openPicker={openPicker}
               dragHandlers={dragHandlers}
               isDragging={isDragging}
@@ -436,66 +543,280 @@ function UploadCard() {
         )}
       </AnimatePresence>
 
-      {/* File validation error */}
-      {hasFileError && fileError && !isSuccess && (
+      {/* Validation error */}
+      {billError && (
         <div className="mt-4 flex items-center gap-2 p-3 rounded-xl bg-red-50 border border-red-200">
           <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
-          <p className="text-xs text-red-600">{fileError}</p>
+          <p className="text-xs text-red-600">{billError}</p>
         </div>
       )}
 
-      {/* API error */}
-      {isApiError && (
-        <div className="mt-4">
-          <UploadError message={apiError} onRetry={handleReset} />
+      {/* API submit error */}
+      {submitError && (
+        <div className="mt-4 flex items-center gap-2 p-3 rounded-xl bg-red-50 border border-red-200">
+          <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
+          <p className="text-xs text-red-600">{submitError}</p>
         </div>
       )}
 
       {/* Privacy note */}
-      {!isSuccess && (
-        <div className="mt-5 flex items-center justify-center gap-2 text-xs text-gray-400">
-          <Lock className="w-3.5 h-3.5" />
-          Your data is encrypted and secure. We never store your documents.
-        </div>
-      )}
+      <div className="mt-5 flex items-center justify-center gap-2 text-xs text-gray-400">
+        <Lock className="w-3.5 h-3.5" />
+        Your data is encrypted and secure. We never store your documents.
+      </div>
+    </motion.div>
+  )
+}
 
-      {/* Processing overlay — full screen light glassmorphic modal */}
-      <AnimatePresence>
-        {isBusy && (
-          <motion.div
-            key="overlay"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.3 }}
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-indigo-50/65 backdrop-blur-[8px]"
-          >
-            <motion.div
-              initial={{ scale: 0.95, y: 16 }}
-              animate={{ scale: 1, y: 0 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
-              className="w-full max-w-md bg-white/95 rounded-2xl border border-indigo-100/80
-                         shadow-2xl overflow-hidden backdrop-blur-md"
-            >
-              <div className="flex items-center gap-2.5 px-5 py-4 border-b border-indigo-50/80 bg-indigo-50/15">
-                <ScanLine className="w-4 h-4 text-indigo-600" />
-                <span className="text-sm font-bold text-indigo-950">
-                  Document Verification Agent
-                </span>
-                <div className="ml-auto flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-indigo-600 animate-pulse" />
-                  <span className="text-xs font-semibold text-indigo-400">Processing</span>
-                </div>
-              </div>
-              <div className="p-5">
-                <VerificationLoader phase={phase} uploadProgress={uploadProgress} />
-              </div>
+/* ── Upload card wrapper — holds all states ── */
+function UploadCard() {
+  const navigate = useNavigate()
+
+  /* ──── Aadhaar file state ──────────────────────────────────────────────── */
+  const {
+    file, previewUrl, error: fileError,
+    isDragging, hasPreview, hasError: hasFileError, isIdle: isFileIdle,
+    inputRef, accept, clear,
+    openPicker, handleInputChange,
+    dragHandlers, handleKeyDown,
+  } = useFileUpload({ maxSizeMB: 10 })
+
+  /* ──── Aadhaar API extraction state ──────────────────────────────────── */
+  const {
+    submit, submitBill, reset: apiReset,
+    phase, uploadProgress,
+    result, error: apiError,
+    isBusy, isSuccess, isError: isApiError,
+    isNeedAddressProof,
+  } = useDocumentExtraction()
+
+  /* ──── Electricity bill file state (only active on NEED_ADDRESS_PROOF) ─── */
+  const {
+    file:              billFile,
+    previewUrl:        billPreview,
+    error:             billFileError,
+    isDragging:        billIsDragging,
+    hasPreview:        hasBillPreview,
+    hasError:          hasBillFileError,
+    inputRef:          billInputRef,
+    accept:            billAccept,
+    clear:             clearBill,
+    openPicker:        openBillPicker,
+    handleInputChange: handleBillInputChange,
+    dragHandlers:      billDragHandlers,
+    handleKeyDown:     handleBillKeyDown,
+  } = useFileUpload({
+    maxSizeMB: 10,
+    accept: '.jpg,.jpeg,.png',
+    allowedTypes: ['image/jpeg', 'image/jpg', 'image/png'],
+    customErrorMsg: 'Unsupported file format. Please upload a JPG or PNG image of your Electricity Bill.'
+  })
+
+  /* Electricity bill submission state */
+  const [billSubmitting, setBillSubmitting] = useState(false)
+  const [billSubmitError, setBillSubmitError] = useState(null)
+
+  /* ──── Handlers ───────────────────────────────────────────────────────── */
+  const handleVerify = useCallback(async () => {
+    if (!file) return
+    await submit(file)
+  }, [file, submit])
+
+  const handleReset = useCallback(() => {
+    clear()
+    apiReset()
+    clearBill()
+    setBillSubmitError(null)
+  }, [clear, apiReset, clearBill])
+
+  const handleDashboard = useCallback(() => {
+    navigate('/dashboard', { state: { result } })
+  }, [navigate, result])
+
+  /** Submit the electricity bill to the backend */
+  const handleBillSubmit = useCallback(async () => {
+    if (!billFile) return
+    setBillSubmitting(true)
+    setBillSubmitError(null)
+    try {
+      const data = await submitBill(billFile, result?.aadhaar_data)
+      navigate('/dashboard', { state: { result: data } })
+    } catch (err) {
+      setBillSubmitError(err?.message ?? 'Submission failed. Please try again.')
+    } finally {
+      setBillSubmitting(false)
+    }
+  }, [billFile, result, submitBill, navigate])
+
+  /* ──── Visibility flags ──────────────────────────────────────────────────── */
+  const showDropZone = !hasPreview && !isBusy && !isSuccess && !isNeedAddressProof
+  const showPreview  = hasPreview  && !isBusy && !isSuccess && !isNeedAddressProof
+
+  return (
+    /* Wrapper so both cards stack vertically with a gap */
+    <div className="space-y-4">
+
+      {/* ──── AADHAAR UPLOAD CARD ─────────────────────────────────────────── */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.55, delay: 0.28 }}
+        className="card-white p-6 sm:p-8"
+      >
+        {/* Hidden file input */}
+        <input
+          ref={inputRef}
+          type="file"
+          accept={accept}
+          onChange={handleInputChange}
+          className="sr-only"
+          aria-hidden="true"
+        />
+
+        {/* Content transitions */}
+        <AnimatePresence mode="wait">
+          {isSuccess ? (
+            <motion.div key="success"
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+              <SuccessSummary
+                result={result}
+                onReset={handleReset}
+                onDashboard={handleDashboard}
+              />
             </motion.div>
-          </motion.div>
+          ) : isNeedAddressProof ? (
+            /* — Aadhaar accepted but QR failed: show locked state — */
+            <motion.div
+              key="need-proof"
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="flex items-center gap-4 py-4"
+            >
+              <div className="w-12 h-12 rounded-xl bg-amber-50 border border-amber-200
+                              flex items-center justify-center flex-shrink-0">
+                <CheckCircle2 className="w-6 h-6 text-amber-500" />
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-bold text-gray-800">Aadhaar Uploaded Successfully</p>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  QR could not be decoded. Please complete verification below.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleReset}
+                className="text-xs font-semibold text-indigo-500 hover:text-indigo-700 transition-colors"
+              >
+                Start Over
+              </button>
+            </motion.div>
+          ) : showPreview ? (
+            <motion.div key="preview"
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+              <FilePreview
+                file={file}
+                previewUrl={previewUrl}
+                onClear={handleReset}
+                onVerify={handleVerify}
+              />
+            </motion.div>
+          ) : (
+            <motion.div key="dropzone"
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+              <DropZone
+                openPicker={openPicker}
+                dragHandlers={dragHandlers}
+                isDragging={isDragging}
+                handleKeyDown={handleKeyDown}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* File validation error */}
+        {hasFileError && fileError && !isSuccess && !isNeedAddressProof && (
+          <div className="mt-4 flex items-center gap-2 p-3 rounded-xl bg-red-50 border border-red-200">
+            <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
+            <p className="text-xs text-red-600">{fileError}</p>
+          </div>
+        )}
+
+        {/* API error */}
+        {isApiError && (
+          <div className="mt-4">
+            <UploadError message={apiError} onRetry={handleReset} />
+          </div>
+        )}
+
+        {/* Privacy note */}
+        {!isSuccess && !isNeedAddressProof && (
+          <div className="mt-5 flex items-center justify-center gap-2 text-xs text-gray-400">
+            <Lock className="w-3.5 h-3.5" />
+            Your data is encrypted and secure. We never store your documents.
+          </div>
+        )}
+
+        {/* Processing overlay — full screen light glassmorphic modal */}
+        <AnimatePresence>
+          {isBusy && (
+            <motion.div
+              key="overlay"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.3 }}
+              className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-indigo-50/65 backdrop-blur-[8px]"
+            >
+              <motion.div
+                initial={{ scale: 0.95, y: 16 }}
+                animate={{ scale: 1, y: 0 }}
+                exit={{ scale: 0.95, opacity: 0 }}
+                transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+                className="w-full max-w-md bg-white/95 rounded-2xl border border-indigo-100/80
+                           shadow-2xl overflow-hidden backdrop-blur-md"
+              >
+                <div className="flex items-center gap-2.5 px-5 py-4 border-b border-indigo-50/80 bg-indigo-50/15">
+                  <ScanLine className="w-4 h-4 text-indigo-600" />
+                  <span className="text-sm font-bold text-indigo-950">
+                    Document Verification Agent
+                  </span>
+                  <div className="ml-auto flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-600 animate-pulse" />
+                    <span className="text-xs font-semibold text-indigo-400">Processing</span>
+                  </div>
+                </div>
+                <div className="p-5">
+                  <VerificationLoader phase={phase} uploadProgress={uploadProgress} />
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </motion.div>
+
+      {/* ──── ELECTRICITY BILL CARD (only when NEED_ADDRESS_PROOF) ────────── */}
+      <AnimatePresence>
+        {isNeedAddressProof && (
+          <ElectricityBillCard
+            billFile={billFile}
+            billPreview={billPreview}
+            billError={hasBillFileError ? billFileError : null}
+            hasBillPreview={hasBillPreview}
+            isDragging={billIsDragging}
+            inputRef={billInputRef}
+            accept={billAccept}
+            openPicker={openBillPicker}
+            handleInputChange={handleBillInputChange}
+            dragHandlers={billDragHandlers}
+            handleKeyDown={handleBillKeyDown}
+            onClear={clearBill}
+            onSubmit={handleBillSubmit}
+            isBusy={billSubmitting}
+            submitError={billSubmitError}
+          />
         )}
       </AnimatePresence>
-    </motion.div>
+
+    </div>
   )
 }
 
