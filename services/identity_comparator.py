@@ -1,4 +1,4 @@
-from app.comparator import normalize_name, normalize_date
+from services.comparator import normalize_name, normalize_date
 from rapidfuzz import fuzz
 
 def compare_identity(aadhaar_name, pan_name, aadhaar_dob, pan_dob):

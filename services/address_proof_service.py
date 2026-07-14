@@ -1,5 +1,5 @@
-from app.ocr import extract_text
-from app.llm_extractor import extract_address_proof
+from services.ocr import extract_text
+from services.llm_extractor import extract_address_proof
 
 
 def parse_address_proof(file_path):

@@ -67,4 +67,3 @@ def validate_aadhaar(aadhaar):
         return False
 
     return True
-

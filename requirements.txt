@@ -9,11 +9,10 @@ groq
 opencv-python
 python-multipart
 pyzbar
-dotenv
+python-dotenv
 pytesseract
 psycopg2-binary
-sqlalchemy 
-psycopg2-binary
+sqlalchemy
 rapidfuzz
 pillow
-sqlalchemy
+requests

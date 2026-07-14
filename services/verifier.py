@@ -1,4 +1,4 @@
-from app.data_loader import get_user, find_user_by_fields
+from models.data_loader import get_user, find_user_by_fields
 from rapidfuzz import fuzz
 from datetime import datetime
 

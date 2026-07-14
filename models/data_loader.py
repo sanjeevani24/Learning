@@ -1,5 +1,5 @@
 from sqlalchemy import text
-from app.database import engine
+from models.database import engine
 
 def get_user(aadhaar):
 

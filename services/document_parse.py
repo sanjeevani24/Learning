@@ -1,6 +1,6 @@
 import re
 from datetime import datetime
-from app.llm_extractor import extract_person_details
+from services.llm_extractor import extract_person_details
 
 def extract_aadhaar_fields(text):
 
