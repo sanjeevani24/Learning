@@ -1,5 +1,32 @@
 from app.data_loader import get_user, find_user_by_fields
 from rapidfuzz import fuzz
+from datetime import datetime
+
+
+def normalize_date(date_str):
+
+    if not date_str:
+        return None
+
+    date_str = str(date_str).strip()
+
+    formats = [
+        "%d/%m/%Y",
+        "%d-%m-%Y",
+        "%Y-%m-%d",
+        "%Y/%m/%d"
+    ]
+
+    for fmt in formats:
+        try:
+            return datetime.strptime(
+                date_str,
+                fmt
+            ).strftime("%Y-%m-%d")
+        except ValueError:
+            pass
+
+    return date_str
 
 
 def fuzzy_match(value1, value2, threshold=85):
@@ -20,6 +47,35 @@ def fuzzy_match(value1, value2, threshold=85):
 
 
 def verify_user(user):
+    aadhaar_number = user.get("aadhaar_number")
+
+    # <-- ADD THE DEBUG PRINTS HERE
+
+    print("=" * 60)
+    print("USER DATA:")
+    print(user)
+
+    print("AADHAAR NUMBER:")
+    print(aadhaar_number)
+
+    record = None
+
+    if aadhaar_number:
+        record = get_user(aadhaar_number)
+
+    print("GET USER RESULT:")
+    print(record)
+
+    if record is None:
+        record = find_user_by_fields(user)
+
+    print("FIND USER RESULT:")
+    print(record)
+    print("=" * 60)
+
+    # Existing code continues...
+
+
 
     aadhaar_number = user.get("aadhaar_number")
 
@@ -63,13 +119,14 @@ def verify_user(user):
         "full_name",
         "address"
     }
+    
 
     for user_field, db_field in field_mapping.items():
 
         user_value = user.get(user_field)
         db_value = record.get(db_field)
 
-        if user_value is None:
+        if user_value in [None, ""]:
             missing_fields.append(user_field)
             continue
 
@@ -89,10 +146,11 @@ def verify_user(user):
                 threshold=80
             )
 
-        # ----------------------------
-        # Exact Matching
-        # ----------------------------
         else:
+
+            if user_field == "date_of_birth":
+                user_value = normalize_date(user_value)
+                db_value = normalize_date(db_value)
 
             is_match = (
                 str(user_value).strip().lower()

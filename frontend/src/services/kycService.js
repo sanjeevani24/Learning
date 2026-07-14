@@ -60,10 +60,11 @@ import api from './api'
  *   verification_result: object,
  * }
  * ─────────────────────────────────────────────────────────────────────── */
-export async function extractDocument(file, onUploadProgress) {
+export async function extractDocument(aadhaarFile, panFile, onUploadProgress) {
   /* Build the multipart body — field name MUST match FastAPI parameter */
   const formData = new FormData()
-  formData.append('file', file)
+  formData.append('aadhaar', aadhaarFile)
+  formData.append('pan', panFile)
 
   const { data } = await api.post('/extract-document', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },

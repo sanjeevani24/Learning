@@ -34,25 +34,17 @@ def extract_pan_fields(text):
         text
     )
 
-    dob_match = re.search(
-        r"(\d{2}/\d{2}/\d{4})",
-        text
-    )
-
     return {
         "pan_card_number":
             pan_match.group()
-            if pan_match else None,
-
-        "date_of_birth":
-            datetime.strptime(
-                dob_match.group(),
-                "%d/%m/%Y"
-            ).strftime("%Y-%m-%d")
-            if dob_match else None
+            if pan_match else None
     }
 
+
+
 def parse_document(text):
+
+    # ---------------- PAN ----------------
 
     if re.search(r"[A-Z]{5}[0-9]{4}[A-Z]", text):
 
@@ -60,17 +52,24 @@ def parse_document(text):
 
         llm_data = extract_person_details(text)
 
-        # Use LLM DOB if OCR regex failed
-        if not regex_data.get("date_of_birth"):
-            regex_data["date_of_birth"] = llm_data.get(
-                "date_of_birth"
-            )
+        print("REGEX DATA:", regex_data)
+        print("LLM DATA:", llm_data)
+        print("========== PAN OCR ==========")
+        print(text)
 
+        print("========== REGEX ==========")
+        print(regex_data)
+
+        print("========== LLM ==========")
+        print(llm_data)
+            
         return {
             "document_type": "pan card",
             **regex_data,
             **llm_data
-}
+        }
+
+    # ---------------- Aadhaar ----------------
 
     if re.search(r"\b\d{4}\s?\d{4}\s?\d{4}\b", text):
 
@@ -78,17 +77,15 @@ def parse_document(text):
 
         llm_data = extract_person_details(text)
 
-        print("TYPE OF llm_data:", type(llm_data))
-        print("VALUE OF llm_data:", llm_data)
-
         return {
             "document_type": "aadhaar",
             **regex_data,
             **llm_data
         }
 
+    # ---------------- Unknown ----------------
+
     return {
         "document_type": "unknown",
         "raw_text": text
     }
-

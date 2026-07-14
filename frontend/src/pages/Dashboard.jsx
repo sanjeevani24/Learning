@@ -262,16 +262,22 @@ function DocumentOverview({ result }) {
    Actual fields: parsed_data.{document_type, full_name, date_of_birth,
    gender, address, aadhaar_number, pan_card_number}
    ═══════════════════════════════════════════════════════════════════ */
-const OCR_FIELDS = [
+const AADHAAR_FIELDS = [
   { key: 'document_type',   label: 'Document Type',   icon: FileText },
   { key: 'full_name',       label: 'Full Name',       icon: User     },
   { key: 'aadhaar_number',  label: 'Aadhaar Number',  icon: Hash     },
-  { key: 'pan_card_number', label: 'PAN Number',      icon: FileText },
   { key: 'date_of_birth',   label: 'Date of Birth',   icon: Calendar },
   { key: 'gender',          label: 'Gender',          icon: User     },
   { key: 'address',         label: 'Address',         icon: MapPin   },
   { key: 'care_of',         label: 'Care Of / S/O',   icon: User     },
   { key: 'phone_number',    label: 'Phone Number',    icon: Phone    },
+]
+
+const PAN_FIELDS = [
+  { key: 'document_type',   label: 'Document Type',   icon: FileText },
+  { key: 'full_name',       label: 'Full Name',       icon: User     },
+  { key: 'pan_card_number', label: 'PAN Number',      icon: FileText },
+  { key: 'date_of_birth',   label: 'Date of Birth',   icon: Calendar },
 ]
 
 const BILL_FIELDS = [
@@ -290,16 +296,24 @@ function OCRExtractedData({ result }) {
   const [activeTab, setActiveTab] = useState('aadhaar')
 
   const hasBill = result?.electricity_bill != null
-  const currentTab = hasBill ? activeTab : 'aadhaar'
 
-  const fields = currentTab === 'aadhaar' ? OCR_FIELDS : BILL_FIELDS
-  const data = currentTab === 'aadhaar'
+  const fields = activeTab === 'aadhaar'
+    ? AADHAAR_FIELDS
+    : activeTab === 'pan'
+      ? PAN_FIELDS
+      : BILL_FIELDS
+
+  const data = activeTab === 'aadhaar'
     ? (get(result, 'parsed_data') ?? {})
-    : (get(result, 'electricity_bill') ?? {})
+    : activeTab === 'pan'
+      ? (get(result, 'pan_data') ?? {})
+      : (get(result, 'electricity_bill') ?? {})
 
-  const ocrConf = currentTab === 'aadhaar'
+  const ocrConf = activeTab === 'aadhaar'
     ? (get(result, 'aadhaar_ocr_confidence') ?? get(result, 'ocr_confidence'))
-    : null
+    : activeTab === 'pan'
+      ? get(result, 'pan_ocr_confidence')
+      : null
 
   const filteredFields = fields.filter(({ key, label }) => {
     if (!search) return true
@@ -309,7 +323,7 @@ function OCRExtractedData({ result }) {
 
   const headerBadge = ocrConf != null
     ? <ConfidenceBadge value={ocrConf} />
-    : hasBill && currentTab === 'electricity_bill'
+    : hasBill && activeTab === 'electricity_bill'
       ? <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold border bg-amber-50 border-amber-200 text-amber-700">⚡ Bill OCR</span>
       : null
 
@@ -317,36 +331,46 @@ function OCRExtractedData({ result }) {
     <Section id="sec-ocr" title="OCR Extracted Information" icon={ScanLine}
              iconBg="bg-blue-50" iconColor="text-blue-600"
              badge={headerBadge}>
-      {hasBill && (
-        <div className="px-5 pt-4 pb-1.5 flex gap-2 border-b border-gray-100 bg-gray-50/20">
-          <button
-            onClick={() => { setActiveTab('aadhaar'); setSearch(''); }}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-              currentTab === 'aadhaar'
-                ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-150'
-                : 'bg-white text-gray-500 border border-gray-200 hover:bg-gray-50'
-            }`}
-          >
-            Aadhaar Card OCR
-          </button>
+      <div className="px-5 pt-4 pb-1.5 flex gap-2 border-b border-gray-100 bg-gray-50/20">
+        <button
+          onClick={() => { setActiveTab('aadhaar'); setSearch(''); }}
+          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+            activeTab === 'aadhaar'
+              ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-150'
+              : 'bg-white text-gray-500 border border-gray-200 hover:bg-gray-50'
+          }`}
+        >
+          Aadhaar Card OCR
+        </button>
+        <button
+          onClick={() => { setActiveTab('pan'); setSearch(''); }}
+          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+            activeTab === 'pan'
+              ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-150'
+              : 'bg-white text-gray-500 border border-gray-200 hover:bg-gray-50'
+          }`}
+        >
+          PAN Card OCR
+        </button>
+        {hasBill && (
           <button
             onClick={() => { setActiveTab('electricity_bill'); setSearch(''); }}
             className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-              currentTab === 'electricity_bill'
+              activeTab === 'electricity_bill'
                 ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-150'
                 : 'bg-white text-gray-500 border border-gray-200 hover:bg-gray-50'
             }`}
           >
             Electricity Bill OCR
           </button>
-        </div>
-      )}
+        )}
+      </div>
       {result != null && (
         <div className="px-5 py-3 border-b border-indigo-50/50 bg-indigo-50/5 flex items-center gap-3">
           <div className="relative flex-1">
             <input
               type="text"
-              placeholder={`Search ${currentTab === 'aadhaar' ? 'Aadhaar' : 'Electricity Bill'} OCR fields...`}
+              placeholder={`Search ${activeTab === 'aadhaar' ? 'Aadhaar' : activeTab === 'pan' ? 'PAN' : 'Electricity Bill'} OCR fields...`}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="w-full text-xs pl-8 pr-3 py-1.5 rounded-lg border border-indigo-100 focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-white"
@@ -595,6 +619,80 @@ function OCRvsQR({ result }) {
           {matchPct != null && (
             <div className="flex-1 min-w-32 max-w-40">
               <ProgressBar value={matchPct} color={(matchPct ?? 0) >= 80 ? 'emerald' : (matchPct ?? 0) >= 55 ? 'amber' : 'red'} />
+            </div>
+          )}
+        </div>
+      </div>
+    </Section>
+  )
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   §4b IDENTITY COMPARISON (Aadhaar ↔ PAN)
+   ═══════════════════════════════════════════════════════════════════ */
+function IdentityComparison({ result }) {
+  const ic = get(result, 'identity_comparison') ?? {}
+  const nameMatch = ic.name_match
+  const dobMatch = ic.dob_match
+  const score = ic.identity_score
+
+  const styleName = MATCH_STYLE[nameMatch === true ? 'match' : nameMatch === false ? 'mismatch' : 'missing']
+  const styleDob = MATCH_STYLE[dobMatch === true ? 'match' : dobMatch === false ? 'mismatch' : 'missing']
+
+  const aadhaarName = get(result, 'parsed_data.full_name')
+  const panName = get(result, 'pan_data.full_name')
+  const aadhaarDob = get(result, 'parsed_data.date_of_birth')
+  const panDob = get(result, 'pan_data.date_of_birth')
+
+  return (
+    <Section id="sec-identity-compare" title="Identity Comparison (Aadhaar ↔ PAN)" icon={ArrowLeftRight}
+             iconBg="bg-indigo-50" iconColor="text-indigo-600">
+      <div className="p-5 space-y-2">
+        <div className="grid grid-cols-12 gap-3 px-3 mb-2">
+          {['Field', 'Aadhaar Value', 'PAN Value', 'Status'].map((h, i) => (
+            <span key={h} className={`text-[10px] font-bold text-gray-400 uppercase tracking-wider ${i === 0 ? 'col-span-2' : i === 3 ? 'col-span-2 text-center' : 'col-span-4'}`}>{h}</span>
+          ))}
+        </div>
+
+        {/* Name Row */}
+        <div className={`grid grid-cols-12 gap-3 items-start p-3 rounded-xl border ${styleName.border} ${styleName.bg}`}>
+          <span className="col-span-2 text-xs font-semibold text-gray-700 pt-0.5">Full Name</span>
+          <div className="col-span-4">
+            <ValueCell value={aadhaarName} className="text-xs" />
+          </div>
+          <div className="col-span-4">
+            <ValueCell value={panName} className="text-xs" />
+          </div>
+          <div className="col-span-2 flex justify-center pt-0.5">
+            <span className={`text-[11px] font-bold ${styleName.text}`}>{styleName.icon} {styleName.label}</span>
+          </div>
+        </div>
+
+        {/* DOB Row */}
+        <div className={`grid grid-cols-12 gap-3 items-start p-3 rounded-xl border ${styleDob.border} ${styleDob.bg}`}>
+          <span className="col-span-2 text-xs font-semibold text-gray-700 pt-0.5">Date of Birth</span>
+          <div className="col-span-4">
+            <ValueCell value={aadhaarDob} className="text-xs" />
+          </div>
+          <div className="col-span-4">
+            <ValueCell value={panDob} className="text-xs" />
+          </div>
+          <div className="col-span-2 flex justify-center pt-0.5">
+            <span className={`text-[11px] font-bold ${styleDob.text}`}>{styleDob.icon} {styleDob.label}</span>
+          </div>
+        </div>
+
+        {/* Score Summary */}
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-4 p-4 rounded-xl bg-indigo-50 border border-indigo-100">
+          <div>
+            <p className="text-[10px] text-gray-400 uppercase tracking-wider font-semibold">Identity Match Score</p>
+            {result == null ? <Bone w="w-12" h="h-6" className="mt-1" /> : (
+              <p className={`text-xl font-black ${(score ?? 0) >= 80 ? 'text-emerald-600' : 'text-amber-500'}`}>{score ?? '—'}%</p>
+            )}
+          </div>
+          {score != null && (
+            <div className="flex-1 min-w-32 max-w-40">
+              <ProgressBar value={score} color={(score ?? 0) >= 80 ? 'emerald' : 'amber'} />
             </div>
           )}
         </div>
@@ -1270,6 +1368,9 @@ export default function Dashboard() {
 
         {/* §4 OCR vs QR */}
         <OCRvsQR result={result} />
+
+        {/* Identity Comparison (Aadhaar ↔ PAN) */}
+        <IdentityComparison result={result} />
 
         {/* §5 Database  +  §8 Image Quality */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">

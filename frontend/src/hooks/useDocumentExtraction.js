@@ -75,8 +75,8 @@ export function useDocumentExtraction() {
    *   When the Promise resolves, store the response.  On any rejection,
    *   extract a human-readable message and store it.
    * ─────────────────────────────────────────────────────────────────── */
-  const submit = useCallback(async (file) => {
-    if (!file) return
+  const submit = useCallback(async (aadhaarFile, panFile) => {
+    if (!aadhaarFile || !panFile) return
 
     /* Cancel any previous in-flight request */
     abortRef.current?.abort()
@@ -110,7 +110,7 @@ export function useDocumentExtraction() {
       }
 
       /* ── Actual API call ──────────────────────────────────────── */
-      const data = await extractDocument(file, onUploadProgress)
+      const data = await extractDocument(aadhaarFile, panFile, onUploadProgress)
 
       if (controller.signal.aborted) return
 
@@ -131,8 +131,8 @@ export function useDocumentExtraction() {
         const historyItem = {
           id: `ver_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
           timestamp: new Date().toISOString(),
-          fileName: file.name,
-          fileSize: file.size,
+          fileName: `${aadhaarFile.name} + ${panFile.name}`,
+          fileSize: aadhaarFile.size + panFile.size,
           result: data,
           status: status
         }
@@ -188,6 +188,8 @@ export function useDocumentExtraction() {
           ...aadhaarData,
           document_type: 'aadhaar'
         },
+        pan_data: result?.pan_data,
+        identity_comparison: result?.identity_comparison,
         aadhaar_ocr_confidence: result?.ocr_confidence ?? 90
       }
 
@@ -221,7 +223,7 @@ export function useDocumentExtraction() {
       setPhase(PHASE.ERROR)
       throw err
     }
-  }, [])
+  }, [result])
 
   /* ── reset: go back to idle ─────────────────────────────────────────── */
   const reset = useCallback(() => {

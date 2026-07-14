@@ -12,19 +12,30 @@ client = Groq(
 
 def extract_person_details(text):
 
-    prompt = f"""
-Extract the following information from the OCR text.
+prompt = f"""
 
-Return ONLY valid JSON.
+You are an expert KYC document parser.
 
-{{
+Extract ONLY information that is explicitly visible in the OCR text.
+
+VERY IMPORTANT:
+
+- Never guess.
+- Never infer missing values.
+- Never convert issue dates into DOB.
+- If Date of Birth is not explicitly written, return "".
+- Ignore any 8-digit dates unless they are explicitly labeled as DOB, Date of Birth, Birth, or appear directly below the person's name as a DOB.
+- Return ONLY valid JSON.
+
+{
     "full_name": "",
     "date_of_birth": "",
     "gender": "",
     "address": ""
-}}
+}
 
 OCR TEXT:
+
 {text}
 """
 
